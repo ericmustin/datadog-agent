@@ -3,14 +3,13 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2016-2020 Datadog, Inc.
 
-package tagger
+package local
 
 import (
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/DataDog/datadog-agent/pkg/config"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 
 	"github.com/DataDog/datadog-agent/cmd/agent/api/response"
@@ -23,7 +22,7 @@ import (
 
 // Tagger is the entry class for entity tagging. It holds collectors, memory store
 // and handles the query logic. One can use the package methods to use the default
-// tagger instead of instantiating one.
+// Tagger instead of instantiating one.
 type Tagger struct {
 	sync.RWMutex
 	tagStore    *tagStore
@@ -45,12 +44,12 @@ type collectorReply struct {
 	instance collectors.Collector
 }
 
-// newTagger returns an allocated tagger. You still have to run Init()
+// NewTagger returns an allocated tagger. You still have to run Init()
 // once the config package is ready.
 // You are probably looking for tagger.Tag() using the global instance
 // instead of creating your own.
-func newTagger() *Tagger {
-	return &Tagger{
+func NewTagger(catalog collectors.Catalog) *Tagger {
+	t := &Tagger{
 		tagStore:    newTagStore(),
 		candidates:  make(map[string]collectors.CollectorFactory),
 		pullers:     make(map[string]collectors.Puller),
@@ -62,32 +61,28 @@ func newTagger() *Tagger {
 		retryTicker: time.NewTicker(30 * time.Second),
 		stop:        make(chan bool),
 	}
-}
-
-// Init goes through a catalog and tries to detect which are relevant
-// for this host. It then starts the collection logic and is ready for
-// requests.
-func (t *Tagger) Init(catalog collectors.Catalog) {
-	if config.IsCLCRunner() {
-		log.Infof("Tagger not started on CLC")
-		return
-	}
-
-	t.Lock()
-
-	// Only register the health check when the tagger is started
-	t.health = health.RegisterLiveness("tagger")
 
 	// Populate collector candidate list from catalog
 	// as we'll remove entries we need to copy the map
 	for name, factory := range catalog {
 		t.candidates[name] = factory
 	}
-	t.Unlock()
+
+	return t
+}
+
+// Init goes through a catalog and tries to detect which are relevant
+// for this host. It then starts the collection logic and is ready for
+// requests.
+func (t *Tagger) Init() error {
+	// Only register the health check when the tagger is started
+	t.health = health.RegisterLiveness("tagger")
 
 	t.startCollectors()
 	go t.run() //nolint:errcheck
 	go t.pull()
+
+	return nil
 }
 
 func (t *Tagger) run() error {
@@ -220,12 +215,12 @@ func (t *Tagger) Stop() error {
 
 // Tag returns tags for a given entity
 func (t *Tagger) Tag(entity string, cardinality collectors.TagCardinality) ([]string, error) {
-	queries.Inc(tagCardinalityToString(cardinality))
+	queries.Inc(collectors.TagCardinalityToString(cardinality))
 
 	if entity == "" {
 		return nil, fmt.Errorf("empty entity ID")
 	}
-	cachedTags, sources, _ := t.tagStore.lookup(entity, cardinality)
+	cachedTags, sources := t.tagStore.lookup(entity, cardinality)
 
 	if len(sources) == len(t.fetchers) {
 		// All sources sent data to cache
@@ -286,13 +281,22 @@ func (t *Tagger) Standard(entity string) ([]string, error) {
 	if entity == "" {
 		return nil, fmt.Errorf("empty entity ID")
 	}
-	if _, _, hash := t.tagStore.lookup(entity, collectors.HighCardinality); hash == "" {
+
+	tags, err := t.tagStore.lookupStandard(entity)
+	if err == errNotFound {
 		// entity not found yet in the tagger
 		// trigger tagger fetch operations
 		log.Debugf("Entity '%s' not found in tagger cache, will try to fetch it", entity)
 		_, _ = t.Tag(entity, collectors.LowCardinality)
+
+		return t.tagStore.lookupStandard(entity)
 	}
-	return t.tagStore.lookupStandard(entity)
+
+	if err != nil {
+		return nil, fmt.Errorf("Entity %q not found: %w", entity, err)
+	}
+
+	return tags, nil
 }
 
 // List the content of the tagger
@@ -305,7 +309,7 @@ func (t *Tagger) List(cardinality collectors.TagCardinality) response.TaggerList
 	defer t.tagStore.RUnlock()
 	for entityID, et := range t.tagStore.store {
 		entity := response.TaggerListEntity{}
-		tags, sources, _ := et.get(cardinality)
+		tags, sources := et.get(cardinality)
 		entity.Tags = copyArray(tags)
 		entity.Sources = copyArray(sources)
 		r.Entities[entityID] = entity
@@ -317,12 +321,12 @@ func (t *Tagger) List(cardinality collectors.TagCardinality) response.TaggerList
 // Subscribe returns a list of existing entities in the store, alongside a
 // channel that receives events whenever an entity is added, modified or
 // deleted.
-func (t *Tagger) Subscribe(cardinality collectors.TagCardinality) chan []EntityEvent {
+func (t *Tagger) Subscribe(cardinality collectors.TagCardinality) chan []collectors.EntityEvent {
 	return t.tagStore.subscribe(cardinality)
 }
 
 // Unsubscribe ends a subscription to entity events and closes its channel.
-func (t *Tagger) Unsubscribe(ch chan []EntityEvent) {
+func (t *Tagger) Unsubscribe(ch chan []collectors.EntityEvent) {
 	t.tagStore.unsubscribe(ch)
 }
 

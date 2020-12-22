@@ -16,6 +16,7 @@ ALL_TAGS = set(
         "containerd",
         "cri",
         "docker",
+        "dogstatsd",
         "ec2",
         "etcd",
         "fargateprocess",
@@ -74,7 +75,7 @@ CLUSTER_AGENT_TAGS = set(["clusterchecks", "kubeapiserver", "orchestrator", "sec
 CLUSTER_AGENT_CLOUDFOUNDRY_TAGS = set(["clusterchecks", "secrets",])
 
 # DOGSTATSD_TAGS lists the tags needed when building dogstatsd
-DOGSTATSD_TAGS = set(["docker", "kubelet", "secrets", "zlib",])
+DOGSTATSD_TAGS = set(["docker", "dogstatsd", "kubelet", "secrets", "zlib",])
 
 # IOT_AGENT_TAGS lists the tags needed when building the IoT agent
 IOT_AGENT_TAGS = set(["jetson", "systemd", "zlib",])

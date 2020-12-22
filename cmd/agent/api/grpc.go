@@ -31,11 +31,7 @@ type server struct {
 
 type serverSecure struct {
 	pb.UnimplementedAgentServer
-
-	// NOTE: tagger.Tagger is a concrete type that makes testing harder
-	// than it should be. We should make that concrete type private, and
-	// create a new tagger.Tagger interface that replicates it.
-	tagger *tagger.Tagger
+	tagger tagger.Tagger
 }
 
 func (s *server) GetHostname(ctx context.Context, in *pb.HostnameRequest) (*pb.HostnameReply, error) {
@@ -125,7 +121,7 @@ func tagger2pbEntityID(entityID string) (*pb.EntityId, error) {
 	}, nil
 }
 
-func tagger2pbEntityEvent(event tagger.EntityEvent) (*pb.StreamTagsResponse, error) {
+func tagger2pbEntityEvent(event collectors.EntityEvent) (*pb.StreamTagsResponse, error) {
 	entity := event.Entity
 	entityID, err := tagger2pbEntityID(entity.ID)
 	if err != nil {
@@ -134,11 +130,11 @@ func tagger2pbEntityEvent(event tagger.EntityEvent) (*pb.StreamTagsResponse, err
 
 	var eventType pb.EventType
 	switch event.EventType {
-	case tagger.EventTypeAdded:
+	case collectors.EventTypeAdded:
 		eventType = pb.EventType_ADDED
-	case tagger.EventTypeModified:
+	case collectors.EventTypeModified:
 		eventType = pb.EventType_MODIFIED
-	case tagger.EventTypeDeleted:
+	case collectors.EventTypeDeleted:
 		eventType = pb.EventType_DELETED
 	default:
 		return nil, fmt.Errorf("invalid event type %q", event.EventType)
