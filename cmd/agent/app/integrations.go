@@ -334,7 +334,7 @@ func pip(args []string, stdout io.Writer, stderr io.Writer) error {
 
 	err = pipCmd.Run()
 	if err != nil {
-		return fmt.Errorf("error running command: %v", err)
+		return fmt.Errorf("error running pip command '%s': %v", strings.Join(pipCmd.Args, " "), err)
 	}
 
 	return nil
