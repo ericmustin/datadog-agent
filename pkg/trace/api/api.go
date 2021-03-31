@@ -372,12 +372,16 @@ func (r *HTTPReceiver) tagStats(v Version, req *http.Request) *info.TagStats {
 }
 
 func decodeTraces(v Version, req *http.Request) (pb.Traces, error) {
+	// TODO: add v for for otel, v0.5.1 ? idk conventions
 	switch v {
 	case v01:
 		var spans []pb.Span
+		// TODO: modify Decode to account for otel?
 		if err := json.NewDecoder(req.Body).Decode(&spans); err != nil {
 			return nil, err
 		}
+
+		// TODO: modify tracesFromSpans to account for otel, is this necessary if otel?
 		return tracesFromSpans(spans), nil
 	case v05:
 		buf := getBuffer()
@@ -389,7 +393,16 @@ func decodeTraces(v Version, req *http.Request) (pb.Traces, error) {
 		err := traces.UnmarshalMsgDictionary(buf.Bytes())
 		return traces, err
 	default:
+		// TODO: modify decodeRequest to account for otel? or use decodeRequest for model
+		// of how to handle a case: v05.1 endpoint 
+		// we need to pass in or otherwise prepare a pb.traces [[],[],[]]  data model
+		// from the otel request body. This will mean getting the correct pb that the req.Body
+		// of an otel payload req has,  decoding that with json, and then either
+		// modifying decodeRequest to do so, or adding a method before it which
+		// coercing the spans+resource+il info into a list of lists of datadog spans w/matching trace ids.
 		var traces pb.Traces
+
+
 		if err := decodeRequest(req, &traces); err != nil {
 			return nil, err
 		}
@@ -447,6 +460,7 @@ func (r *HTTPReceiver) handleStats(w http.ResponseWriter, req *http.Request) {
 
 // handleTraces knows how to handle a bunch of traces
 func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.Request) {
+	// TODO: modify tagStats for otel headers or info
 	ts := r.tagStats(v, req)
 	tracen, err := traceCount(req)
 	if err == nil && r.rateLimited(tracen) {
@@ -457,7 +471,16 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 		atomic.AddInt64(&ts.PayloadRefused, 1)
 		return
 	}
-
+	// TODO: modify decodeTraces for otel json/http format
+	// do translation here
+	// this represents the bulk of the work for correct processing of traces
+	// but we also must ensure we make a best efforts attempt to function
+	// as the otlp client expects as specified by the specification.
+	// the datadog default behavior is to potentially return some rate by service
+	// logic. we need to determine what expectations the otlp client has, 
+	// if it expects a payload with rate limiting info, what status codes / msgs, 
+	// timeout, rate limiting resp, etc etc. we probably can't do all of it (timeouts, for ex),
+	// but we can at least attempt to function with some of the similar req/res  settings
 	traces, err := decodeTraces(v, req)
 	if err != nil {
 		httpDecodingError(err, []string{"handler:traces", fmt.Sprintf("v:%s", v)}, w)
@@ -476,12 +499,16 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 		log.Errorf("Cannot decode %s traces payload: %v", v, err)
 		return
 	}
+	// TODO: modify replyOk to account for otel status codes
+	// and any rate by  service info
 	r.replyOK(v, w)
 
 	atomic.AddInt64(&ts.TracesReceived, int64(len(traces)))
 	atomic.AddInt64(&ts.TracesBytes, req.Body.(*LimitedReader).Count)
 	atomic.AddInt64(&ts.PayloadAccepted, 1)
 
+	// TODO: modify Payload to account for otel
+	// getContainerTags and Client* look for request headers that differ in otel
 	payload := &Payload{
 		Source:                 ts,
 		Traces:                 traces,
