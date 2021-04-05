@@ -52,13 +52,13 @@ require (
 	github.com/DataDog/zstd_0 v0.0.0-20210310093942-586c1286621f
 	github.com/Masterminds/semver v1.5.0
 	github.com/Masterminds/sprig v2.22.0+incompatible
-	github.com/Microsoft/go-winio v0.4.15
+	github.com/Microsoft/go-winio v0.4.16
 	github.com/StackExchange/wmi v0.0.0-20210224194228-fe8f1750fd46 // indirect
 	github.com/alecthomas/participle v0.4.4
 	github.com/alecthomas/repr v0.0.0-20181024024818-d37bc2a10ba1
 	github.com/andybalholm/brotli v1.0.1 // indirect
 	github.com/avast/retry-go v2.7.0+incompatible
-	github.com/aws/aws-sdk-go v1.30.5
+	github.com/aws/aws-sdk-go v1.37.8
 	github.com/beevik/ntp v0.3.0
 	github.com/benesch/cgosymbolizer v0.0.0-20190515212042-bec6fe6e597b
 	github.com/bhmj/jsonslice v0.0.0-20200323023432-92c3edaad8e2
@@ -70,7 +70,7 @@ require (
 	github.com/cloudfoundry-community/go-cfclient v0.0.0-20201123235753-4f46d6348a05
 	github.com/cobaugh/osrelease v0.0.0-20181218015638-a93a0a55a249
 	github.com/containerd/cgroups v0.0.0-20190919134610-bf292b21730f
-	github.com/containerd/containerd v1.3.10
+	github.com/containerd/containerd v1.4.3
 	github.com/containerd/fifo v0.0.0-20191213151349-ff969a566b00 // indirect
 	github.com/containerd/typeurl v1.0.0
 	github.com/coreos/go-semver v0.3.0
@@ -78,7 +78,7 @@ require (
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/davecgh/go-spew v1.1.1
 	github.com/dgraph-io/ristretto v0.0.3
-	github.com/docker/docker v17.12.0-ce-rc1.0.20200309214505-aa6a9891b09c+incompatible
+	github.com/docker/docker v20.10.3+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/elastic/go-libaudit v0.4.0
@@ -90,7 +90,6 @@ require (
 	github.com/fzipp/gocyclo v0.3.1
 	github.com/go-ini/ini v1.55.0
 	github.com/go-ole/go-ole v1.2.5
-	github.com/go-openapi/spec v0.19.8 // indirect
 	github.com/go-test/deep v1.0.5 // indirect
 	github.com/gobwas/glob v0.2.3
 	github.com/godbus/dbus v4.1.0+incompatible
@@ -98,18 +97,18 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
 	github.com/golang/mock v1.4.4
-	github.com/golang/protobuf v1.4.3
+	github.com/golang/protobuf v1.5.1
 	github.com/golang/snappy v0.0.3 // indirect
 	github.com/golangci/golangci-lint v1.27.0
 	github.com/google/gopacket v1.1.17
-	github.com/google/pprof v0.0.0-20201117184057-ae444373da19
+	github.com/google/pprof v0.0.0-20210208152844-1612e9be7af6
 	github.com/gordonklaus/ineffassign v0.0.0-20210103220932-664217a59c00
-	github.com/gorilla/mux v1.7.4
+	github.com/gorilla/mux v1.8.0
 	github.com/gosnmp/gosnmp v1.29.0
 	github.com/goware/modvendor v0.3.0
-	github.com/grpc-ecosystem/go-grpc-middleware v1.2.0
-	github.com/grpc-ecosystem/grpc-gateway v1.14.1
-	github.com/hashicorp/consul/api v1.4.0
+	github.com/grpc-ecosystem/go-grpc-middleware v1.2.2
+	github.com/grpc-ecosystem/grpc-gateway v1.16.0
+	github.com/hashicorp/consul/api v1.8.1
 	github.com/hashicorp/go-multierror v1.1.0
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/hectane/go-acl v0.0.0-20190604041725-da78bae5fc95
@@ -126,7 +125,7 @@ require (
 	github.com/mailru/easyjson v0.7.6
 	github.com/mdlayher/netlink v1.1.0
 	github.com/mholt/archiver/v3 v3.5.0
-	github.com/miekg/dns v1.1.31
+	github.com/miekg/dns v1.1.38
 	github.com/moby/sys/mountinfo v0.4.0
 	github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d // indirect
 	github.com/olekukonko/tablewriter v0.0.2
@@ -135,24 +134,23 @@ require (
 	github.com/opencontainers/runtime-spec v1.0.2
 	github.com/openshift/api v3.9.1-0.20190924102528-32369d4db2ad+incompatible
 	github.com/patrickmn/go-cache v2.1.0+incompatible
-	github.com/philhofer/fwd v1.0.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.3 // indirect
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.5.1
-	github.com/samuel/go-zookeeper v0.0.0-20190923202752-2cc03de413da
+	github.com/prometheus/client_golang v1.10.0
+	github.com/samuel/go-zookeeper v0.0.0-20201211165307-7117e9ea2414
 	github.com/shirou/gopsutil v3.21.2+incompatible
 	github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4
 	github.com/shuLhan/go-bindata v3.6.1+incompatible
 	github.com/sirupsen/logrus v1.7.0 // indirect
 	github.com/soniah/gosnmp v1.26.0
 	github.com/spf13/afero v1.2.2
-	github.com/spf13/cobra v1.0.0
+	github.com/spf13/cobra v1.1.3
 	github.com/spf13/pflag v1.0.5
-	github.com/spf13/viper v1.6.2
-	github.com/stretchr/testify v1.6.1
+	github.com/spf13/viper v1.7.1
+	github.com/stretchr/testify v1.7.0
 	github.com/syndtr/gocapability v0.0.0-20180916011248-d98352740cb2
 	github.com/tedsuo/ifrit v0.0.0-20191009134036-9a97d0632f00 // indirect
-	github.com/tinylib/msgp v1.1.2
+	github.com/tinylib/msgp v1.1.5
 	github.com/tklauser/go-sysconf v0.3.4 // indirect
 	github.com/twmb/murmur3 v1.1.3
 	github.com/ulikunitz/xz v0.5.10 // indirect
@@ -163,32 +161,33 @@ require (
 	github.com/vmihailenco/msgpack/v4 v4.3.11
 	github.com/zorkian/go-datadog-api v2.28.0+incompatible // indirect
 	go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
-	go.uber.org/automaxprocs v1.2.0
+	go.opentelemetry.io/collector v0.23.0
+	go.uber.org/automaxprocs v1.4.0
+	golang.org/dl v0.0.0-20210401214017-5e9de8bfb3b7 // indirect
 	golang.org/x/crypto v0.0.0-20210317152858-513c2a44f670 // indirect
-	golang.org/x/lint v0.0.0-20200302205851-738671d3881b
+	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5
 	golang.org/x/mobile v0.0.0-20201217150744-e6ae53a27f4f
-	golang.org/x/mod v0.3.1-0.20200828183125-ce943fd02449 // indirect
 	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
 	golang.org/x/perf v0.0.0-20200918155509-d949658356f9
-	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
-	golang.org/x/sys v0.0.0-20210303074136-134d130e1a04
+	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
+	golang.org/x/sys v0.0.0-20210309074719-68d13333faf2
 	golang.org/x/text v0.3.5
-	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
+	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324
 	golang.org/x/tools v0.1.0
 	gomodules.xyz/jsonpatch/v3 v3.0.1
-	google.golang.org/genproto v0.0.0-20200825200019-8632dd797987
-	google.golang.org/grpc v1.31.0
+	google.golang.org/genproto v0.0.0-20210302174412-5ede27ff9881
+	google.golang.org/grpc v1.36.0
 	gopkg.in/DataDog/dd-trace-go.v1 v1.23.1
 	gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect
 	gopkg.in/ini.v1 v1.55.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0
-	gopkg.in/yaml.v3 v3.0.0-20200605160147-a5ece683394c
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	gopkg.in/zorkian/go-datadog-api.v2 v2.29.0
 	gotest.tools v2.2.0+incompatible
 	gotest.tools/gotestsum v0.5.3
-	honnef.co/go/tools v0.0.1-2020.1.5
-	k8s.io/api v0.18.6
-	k8s.io/apimachinery v0.18.6
+	honnef.co/go/tools v0.1.1
+	k8s.io/api v0.20.2
+	k8s.io/apimachinery v0.20.2
 	k8s.io/autoscaler/vertical-pod-autoscaler v0.9.2
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/cri-api v0.0.0

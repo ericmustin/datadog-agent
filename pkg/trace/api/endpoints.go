@@ -75,4 +75,8 @@ var endpoints = []endpoint{
 		Pattern: "/profiling/v1/input",
 		Handler: func(r *HTTPReceiver) http.Handler { return r.profileProxyHandler() },
 	},
+	{
+		Pattern: "/otlp/v1/traces",
+		Handler: func(r *HTTPReceiver) http.Handler { return r.handleWithVersion(v1Otel, r.handleTraces) },
+	},
 }

@@ -43,6 +43,8 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/trace/sampler"
 	"github.com/DataDog/datadog-agent/pkg/trace/watchdog"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
+	otelcollectortrace "go.opentelemetry.io/collector/internal/data/protogen/collector/trace/v1"
+
 )
 
 var bufferPool = sync.Pool{
@@ -392,6 +394,15 @@ func decodeTraces(v Version, req *http.Request) (pb.Traces, error) {
 		var traces pb.Traces
 		err := traces.UnmarshalMsgDictionary(buf.Bytes())
 		return traces, err
+	case v1Otel:
+		var otelTracesRaw collectortrace.ExportTraceServiceReq
+
+		if err := decodeOtelRequest(req, &otelTracesRaw); err != nil {
+			return nil, err
+		}
+
+		log.Errorf("Here is OTEL payload %+v", otelTracesRaw)
+		return traces, nil
 	default:
 		// TODO: modify decodeRequest to account for otel? or use decodeRequest for model
 		// of how to handle a case: v05.1 endpoint 
@@ -400,6 +411,7 @@ func decodeTraces(v Version, req *http.Request) (pb.Traces, error) {
 		// of an otel payload req has,  decoding that with json, and then either
 		// modifying decodeRequest to do so, or adding a method before it which
 		// coercing the spans+resource+il info into a list of lists of datadog spans w/matching trace ids.
+		// ref: https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto
 		var traces pb.Traces
 
 
@@ -731,6 +743,24 @@ func decodeRequest(req *http.Request, dest *pb.Traces) error {
 				return fmt.Errorf("could not decode JSON (%q), nor Msgpack (%q)", err1, err2)
 			}
 		}
+		return nil
+	}
+}
+
+func decodeOtelRequest(req *http.Request, oteldest *collectortrace.ExportTraceServiceRequest) error {
+	switch mediaType := getMediaType(req); mediaType {
+	case "application/json":
+		fallthrough
+	case "text/json":
+		fallthrough
+	case "":
+		return json.NewDecoder(req.Body).Decode(oteldest)
+	default:
+		// do our best
+		if err1 := json.NewDecoder(req.Body).Decode(oteldest); err1 != nil {
+			return fmt.Errorf("could not decode JSON (%q)", err1)
+		}
+
 		return nil
 	}
 }
