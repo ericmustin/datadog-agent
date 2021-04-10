@@ -43,9 +43,22 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/trace/sampler"
 	"github.com/DataDog/datadog-agent/pkg/trace/watchdog"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
-	otelcollectortrace "go.opentelemetry.io/collector/internal/data/protogen/collector/trace/v1"
-
+	// oteltrace "go.opentelemetry.io/proto/otlp/trace/v1"
+	// "go.opentelemetry.io/collector/consumer/pdata"
+	"github.com/mitchellh/mapstructure"
+	// v1 "github.com/grafana/tempo/pkg/tempopb/trace/v1"
+	// oteltrace "github.com/grafana/tempo/pkg/tempopb/trace/v1"
+	// v1 "github.com/grafana/tempo/pkg/tempopb/trace/v1"	
 )
+
+type ExportTraceServiceRequest struct {
+	// An array of ResourceSpans.
+	// For data coming from a single resource this array will typically contain one
+	// element. Intermediary nodes (such as OpenTelemetry Collector) that receive
+	// data from multiple origins typically batch the data before forwarding further and
+	// in that case this array will contain multiple elements.
+	// Batches []*oteltrace.ResourceSpans
+}
 
 var bufferPool = sync.Pool{
 	New: func() interface{} {
@@ -373,36 +386,66 @@ func (r *HTTPReceiver) tagStats(v Version, req *http.Request) *info.TagStats {
 	})
 }
 
-func decodeTraces(v Version, req *http.Request) (pb.Traces, error) {
+func decodeTraces(v Version, req *http.Request) (pb.Traces, map[string]interface{}, error) {
 	// TODO: add v for for otel, v0.5.1 ? idk conventions
 	switch v {
 	case v01:
 		var spans []pb.Span
 		// TODO: modify Decode to account for otel?
 		if err := json.NewDecoder(req.Body).Decode(&spans); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		// TODO: modify tracesFromSpans to account for otel, is this necessary if otel?
-		return tracesFromSpans(spans), nil
+		return tracesFromSpans(spans), nil, nil
 	case v05:
 		buf := getBuffer()
 		defer putBuffer(buf)
 		if _, err := io.Copy(buf, req.Body); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		var traces pb.Traces
 		err := traces.UnmarshalMsgDictionary(buf.Bytes())
-		return traces, err
+		return traces, nil, err
 	case v1Otel:
-		var otelTracesRaw collectortrace.ExportTraceServiceReq
+		result := map[string]interface{}{}
 
-		if err := decodeOtelRequest(req, &otelTracesRaw); err != nil {
-			return nil, err
+		if err := decodeOtelRequest(req, result); err != nil {
+			log.Errorf("we blew up")
+			return nil, nil, err
 		}
 
-		log.Errorf("Here is OTEL payload %+v", otelTracesRaw)
-		return traces, nil
+		// ilspans , _ := result["resourceSpans"]
+
+		log.Errorf("keys")
+
+	    if rspans, ok := result["resourceSpans"].([]interface{}); ok {
+	        for _, rsval := range rspans {
+	        	// if ilspans, ilok := rsval.(v1.ResourceSpans); ilok {
+	        	if ilspans, ilok := rsval.(map[string]interface{}); ilok {
+
+	        		OtelResourceSpansToDatadogSpans(ilspans)
+	        		// for ilkey, ilval := range ilspans {
+	        			
+
+			        // log.Errorf(" [========>] %s", ilspans)	        			
+	        		// }
+	        	} else {
+					log.Errorf(" [ehh========>] %s", ilok)	        			
+	        	}
+	        }
+	    } else {
+	        log.Errorf("record not a map[string]interface{}: %v\n", result["resourceSpans"])
+	    }
+
+		// for k, _ := range result["resourceSpans"] {
+		// 	log.Errorf("key %q", k)
+		// }
+
+
+		// otelspans, _ := ilspans["instrumentationLibrarySpans"].(map[string]interface{})
+		// log.Errorf("Here is OTEL payload %q", otelspans["spans"] )
+		return nil, result, nil
 	default:
 		// TODO: modify decodeRequest to account for otel? or use decodeRequest for model
 		// of how to handle a case: v05.1 endpoint 
@@ -416,9 +459,9 @@ func decodeTraces(v Version, req *http.Request) (pb.Traces, error) {
 
 
 		if err := decodeRequest(req, &traces); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return traces, nil
+		return traces, nil, nil
 	}
 }
 
@@ -493,7 +536,7 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 	// if it expects a payload with rate limiting info, what status codes / msgs, 
 	// timeout, rate limiting resp, etc etc. we probably can't do all of it (timeouts, for ex),
 	// but we can at least attempt to function with some of the similar req/res  settings
-	traces, err := decodeTraces(v, req)
+	traces, oteltraces, err := decodeTraces(v, req)
 	if err != nil {
 		httpDecodingError(err, []string{"handler:traces", fmt.Sprintf("v:%s", v)}, w)
 		switch err {
@@ -508,9 +551,24 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 				atomic.AddInt64(&ts.TracesDropped.DecodingError, tracen)
 			}
 		}
+		log.Errorf("1st in!")
 		log.Errorf("Cannot decode %s traces payload: %v", v, err)
 		return
 	}
+
+	if oteltraces != nil {
+		// convert oteltraces to pb.Traces: 
+
+		// func convertToDDTrace(otelta ExportTraceServiceRequest, traces pb.Traces) pb.Traces {
+		//     traces = translate(oteltraces)
+		//     return traces, nil
+		// }
+		log.Errorf("we in!")
+	} else {
+		log.Errorf("we out!")
+	}
+
+
 	// TODO: modify replyOk to account for otel status codes
 	// and any rate by  service info
 	r.replyOK(v, w)
@@ -747,16 +805,61 @@ func decodeRequest(req *http.Request, dest *pb.Traces) error {
 	}
 }
 
-func decodeOtelRequest(req *http.Request, oteldest *collectortrace.ExportTraceServiceRequest) error {
+func decodeOtelRequest(req *http.Request, oteldest map[string]interface{} ) error {
 	switch mediaType := getMediaType(req); mediaType {
 	case "application/json":
+		log.Errorf("okok ayyy blew up inner")
 		fallthrough
 	case "text/json":
+		log.Errorf("ayyy blew up inner")
 		fallthrough
 	case "":
-		return json.NewDecoder(req.Body).Decode(oteldest)
+		var t map[string]interface{}
+
+	    body, err := ioutil.ReadAll(req.Body)
+	    if err != nil {
+	        panic(err)
+	    }
+
+		json.Unmarshal(body, &t)
+		mapstructure.Decode(t, &oteldest)
+
+
+		// log.Errorf("on decodeOtelRequest payload %+v", t)
+
+		// keys := make([]interface{}, 0, len(t))
+		// values := make([]interface{}, 0, len(t))
+
+		// for k, _ := range oteldest {
+		// 	log.Errorf("key %q", k)
+		// }
+
+		// for keyv, valuev := range values {
+		// 	log.Errorf("keyv =  %+v", keyv)
+		// 	log.Errorf("valuev =  %+v", valuev)
+
+		// 	for keyvv, valuevv := range valuev {
+		// 		log.Errorf("keyvv =  %+v", keyvv)
+		// 		log.Errorf("valuevv =  %+v", valuevv)				
+		// 	}
+		// }
+
+		// log.Errorf("keys %+v", keys)
+		// log.Errorf("values %+v", values)
+		// log.Errorf("on decodeOtelRequest target payload %+v", oteldest)
+		// thing := json.NewDecoder(req.Body).Decode(&oteldest)
+
+
+		// log.Errorf("on decodeOtelRequest target payload after %q", oteldest["resourceSpans"] )
+		// log.Errorf("on decodeOtelRequest target payload after ok %q", req.Body)
+		// log.Errorf("on decodeOtelRequest target payload after also %+v", thing)
+
+		return err
 	default:
 		// do our best
+		log.Errorf("Here is")
+		log.Errorf("Here is decodeOtelRequest payload %+v", req.Body)
+
 		if err1 := json.NewDecoder(req.Body).Decode(oteldest); err1 != nil {
 			return fmt.Errorf("could not decode JSON (%q)", err1)
 		}
