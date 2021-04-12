@@ -166,7 +166,9 @@ func (a *Agent) loop() {
 // Process is the default work unit that receives a trace, transforms it and
 // passes it downstream.
 func (a *Agent) Process(p *api.Payload) {
+	log.Errorf("Start process")
 	if len(p.Traces) == 0 {
+		log.Errorf("early exit 1")
 		log.Debugf("Skipping received empty payload")
 		return
 	}
@@ -176,7 +178,9 @@ func (a *Agent) Process(p *api.Payload) {
 	var sinputs []stats.Input
 	a.PrioritySampler.CountClientDroppedP0s(p.ClientDroppedP0s)
 	for _, t := range p.Traces {
+		log.Errorf("early exit 2 ")
 		if len(t) == 0 {
+			log.Errorf("early exit 3")
 			log.Debugf("Skipping received empty trace")
 			continue
 		}
@@ -185,6 +189,7 @@ func (a *Agent) Process(p *api.Payload) {
 		atomic.AddInt64(&ts.SpansReceived, tracen)
 		err := normalizeTrace(p.Source, t)
 		if err != nil {
+			log.Errorf("early exit 4 %s", err)
 			log.Debug("Dropping invalid trace: %s", err)
 			atomic.AddInt64(&ts.SpansDropped, tracen)
 			continue
@@ -193,7 +198,9 @@ func (a *Agent) Process(p *api.Payload) {
 		// Root span is used to carry some trace-level metadata, such as sampling rate and priority.
 		root := traceutil.GetRoot(t)
 
+		log.Errorf("1st blacklis heck")
 		if !a.Blacklister.Allows(root) {
+			log.Errorf("AM I 2nd")
 			log.Debugf("Trace rejected by blacklister. root: %v", root)
 			atomic.AddInt64(&ts.TracesFiltered, 1)
 			atomic.AddInt64(&ts.SpansFiltered, tracen)
@@ -201,6 +208,7 @@ func (a *Agent) Process(p *api.Payload) {
 		}
 
 		if filteredByTags(root, a.conf.RequireTags, a.conf.RejectTags) {
+			log.Errorf("AM I 3rd")
 			log.Debugf("Trace rejected as it fails to meet tag requirements. root: %v", root)
 			atomic.AddInt64(&ts.TracesFiltered, 1)
 			atomic.AddInt64(&ts.SpansFiltered, tracen)

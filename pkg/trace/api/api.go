@@ -386,7 +386,7 @@ func (r *HTTPReceiver) tagStats(v Version, req *http.Request) *info.TagStats {
 	})
 }
 
-func decodeTraces(v Version, req *http.Request) (pb.Traces, map[string]interface{}, error) {
+func decodeTraces(v Version, req *http.Request) (pb.Traces, pb.Traces, error) {
 	// TODO: add v for for otel, v0.5.1 ? idk conventions
 	switch v {
 	case v01:
@@ -408,6 +408,7 @@ func decodeTraces(v Version, req *http.Request) (pb.Traces, map[string]interface
 		err := traces.UnmarshalMsgDictionary(buf.Bytes())
 		return traces, nil, err
 	case v1Otel:
+		var spans []pb.Span
 		result := map[string]interface{}{}
 
 		if err := decodeOtelRequest(req, result); err != nil {
@@ -424,9 +425,10 @@ func decodeTraces(v Version, req *http.Request) (pb.Traces, map[string]interface
 	        	// if ilspans, ilok := rsval.(v1.ResourceSpans); ilok {
 	        	if ilspans, ilok := rsval.(map[string]interface{}); ilok {
 
-	        		OtelResourceSpansToDatadogSpans(ilspans)
+	        		ddSpans := OtelResourceSpansToDatadogSpans(ilspans)
+					spans = append(spans,ddSpans...)
 	        		// for ilkey, ilval := range ilspans {
-	        			
+	        		log.Errorf("spansss lengh is %s", len(spans))
 
 			        // log.Errorf(" [========>] %s", ilspans)	        			
 	        		// }
@@ -445,7 +447,7 @@ func decodeTraces(v Version, req *http.Request) (pb.Traces, map[string]interface
 
 		// otelspans, _ := ilspans["instrumentationLibrarySpans"].(map[string]interface{})
 		// log.Errorf("Here is OTEL payload %q", otelspans["spans"] )
-		return nil, result, nil
+		return nil, tracesFromSpans(spans), nil
 	default:
 		// TODO: modify decodeRequest to account for otel? or use decodeRequest for model
 		// of how to handle a case: v05.1 endpoint 
@@ -536,7 +538,7 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 	// if it expects a payload with rate limiting info, what status codes / msgs, 
 	// timeout, rate limiting resp, etc etc. we probably can't do all of it (timeouts, for ex),
 	// but we can at least attempt to function with some of the similar req/res  settings
-	traces, oteltraces, err := decodeTraces(v, req)
+	_, oteltraces, err := decodeTraces(v, req)
 	if err != nil {
 		httpDecodingError(err, []string{"handler:traces", fmt.Sprintf("v:%s", v)}, w)
 		switch err {
@@ -573,7 +575,8 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 	// and any rate by  service info
 	r.replyOK(v, w)
 
-	atomic.AddInt64(&ts.TracesReceived, int64(len(traces)))
+	log.Errorf("length now is %s", len(oteltraces))
+	atomic.AddInt64(&ts.TracesReceived, int64(len(oteltraces)))
 	atomic.AddInt64(&ts.TracesBytes, req.Body.(*LimitedReader).Count)
 	atomic.AddInt64(&ts.PayloadAccepted, 1)
 
@@ -581,7 +584,7 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 	// getContainerTags and Client* look for request headers that differ in otel
 	payload := &Payload{
 		Source:                 ts,
-		Traces:                 traces,
+		Traces:                 oteltraces,
 		ContainerTags:          getContainerTags(req.Header.Get(headerContainerID)),
 		ClientComputedTopLevel: req.Header.Get(headerComputedTopLevel) != "",
 		ClientComputedStats:    req.Header.Get(headerComputedStats) != "",
@@ -869,9 +872,11 @@ func decodeOtelRequest(req *http.Request, oteldest map[string]interface{} ) erro
 }
 
 func tracesFromSpans(spans []pb.Span) pb.Traces {
+
 	traces := pb.Traces{}
 	byID := make(map[uint64][]*pb.Span)
 	for _, s := range spans {
+		log.Errorf("sppan to iinnvvsiigate is %s", s)
 		byID[s.TraceID] = append(byID[s.TraceID], &s)
 	}
 	for _, t := range byID {

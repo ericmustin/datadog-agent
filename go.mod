@@ -161,7 +161,8 @@ require (
 	github.com/vmihailenco/msgpack/v4 v4.3.11
 	github.com/zorkian/go-datadog-api v2.28.0+incompatible // indirect
 	go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
-	go.opentelemetry.io/collector v0.23.0
+	go.opentelemetry.io/collector v0.23.0 // indirect
+	go.opentelemetry.io/proto/otlp v0.7.0
 	go.uber.org/automaxprocs v1.4.0
 	golang.org/dl v0.0.0-20210401214017-5e9de8bfb3b7 // indirect
 	golang.org/x/crypto v0.0.0-20210317152858-513c2a44f670 // indirect
