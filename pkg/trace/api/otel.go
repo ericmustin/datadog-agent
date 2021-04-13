@@ -7,7 +7,7 @@ package api
 
 import (
 	// "encoding/binary"
-	"encoding/hex"
+	// "encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -272,8 +272,8 @@ func spanToDatadogSpan(s map[string]interface{},
 	}
 
 	// get tracestate as just a general tag
-	log.Errorf("ok the spann is %s", s)
-	log.Errorf("and the other info we got %s , %s", normalizedServiceName, tags)
+	// log.Errorf("ok the spann is %s", s)
+	// log.Errorf("and the other info we got %s , %s", normalizedServiceName, tags)
 
 	// TODO: handle trace state
 	// if len(s.TraceState()) > 0 {
@@ -345,42 +345,45 @@ func spanToDatadogSpan(s map[string]interface{},
 	// 	span.ParentID = decodeAPMSpanID(s.ParentSpanID().Bytes())
 	// }
 
-	spanId := make([]byte, 8)
-	traceId := make([]byte, 16)
-	parentSpanId := make([]byte, 8)
+	// spanId := make([]byte, 8)
+	// traceId := make([]byte, 16)
+	// parentSpanId := make([]byte, 8)
+	var spanId string
+	var traceId string
+	var parentSpanId string
 
 	if traceIdMap, tiok := s["traceId"]; tiok {
 		log.Errorf("traceddid is %s", traceIdMap)
-		i, iserrr := hex.DecodeString(traceIdMap.(string))
+		xType := fmt.Sprintf("%T", traceIdMap)
+		log.Errorf("type is %s", xType) // "[]int"		
+		// i, iserrr := traceIdMap.(string)
 
-		if iserrr == nil {
-			log.Errorf("we ddint messed up trace %s", decodeAPMTraceID(i))
-			traceId = i
-		} else {
-			log.Errorf("we did messed up %s", iserrr)			
-		}
+		// if iserrr == nil {
+		// 	// log.Errorf("we ddint messed up trace %s", i )
+		traceId = traceIdMap.(string)
+		// } else {
+		// 	log.Errorf("we did messed up %s", iserrr)			
+		// }
 	} else {
 		log.Errorf("error traceId, %s", s["traceId"])
 	}
 
 	if spanIdMap, tiok := s["spanId"]; tiok {
-		log.Errorf("spanddid is %s", spanIdMap)
-		i, iserrr := hex.DecodeString(spanIdMap.(string))
+		// log.Errorf("spanddid is %s", spanIdMap)
+		// i, iserrr := spanIdMap.(string)
 
-		if iserrr == nil {
-			log.Errorf("we ddint messed up span %s", decodeAPMSpanID(i))
-			spanId = i
-		} else {
-			log.Errorf("we did messed up %s", iserrr)
-		}
+		// if iserrr == nil {
+			// log.Errorf("we ddint messed up span %s", i )
+		spanId = spanIdMap.(string)
+		// } else {
+		// 	log.Errorf("we did messed up %s", iserrr)
+		// }
 	} else {
 		log.Errorf("error spanId, %s", s["spanId"])
 	}
 
 
-
-
-	log.Errorf("traceId, spanId, parentSpanID %s %s", traceId, spanId, parentSpanId )
+	log.Errorf("traceId, spanId, parentSpanID %s %s", decodeAPMTraceID(traceId), decodeAPMSpanID(spanId), decodeAPMSpanID(parentSpanId) )
 
 	span := pb.Span{
 		TraceID:  decodeAPMTraceID(traceId),
@@ -400,16 +403,16 @@ func spanToDatadogSpan(s map[string]interface{},
 	}
 
 	if parentSpanIdMap, psiok := s["parentSpanId"]; psiok {
-		log.Errorf("parentSpanddid is %s", parentSpanIdMap)
-		i, iserrr := hex.DecodeString(parentSpanIdMap.(string))
+		// log.Errorf("parentSpanddid is %s", parentSpanIdMap)
+		// i, iserrr := parentSpanIdMap.(string)
 
-		if iserrr == nil {
-			log.Errorf("we ddint messed up %s", decodeAPMSpanID(i))
-			parentSpanId = i
+		// if iserrr == nil {
+			// log.Errorf("we ddint messed up %s", decodeAPMSpanID(i))
+			parentSpanId = parentSpanIdMap.(string)
 			span.ParentID = decodeAPMSpanID(parentSpanId)
-		} else {
-			log.Errorf("we did messed up %s", iserrr)
-		}
+		// } else {
+		// 	log.Errorf("we did messed up %s", iserrr)
+		// }
 	} else {
 		log.Errorf("missing or error parentSpanId, %s", s["spanId"])
 	}
@@ -500,12 +503,20 @@ func AttributeValueToString(attr map[string]interface{}) string {
 	return modifiedvalue
 }
 
-func decodeAPMSpanID(rawID []byte) uint64 {
-	return decodeAPMId(hex.EncodeToString(rawID[:]))
+func decodeAPMSpanID(rawID string) uint64 {
+	return decodeAPMId(rawID[:])
+	// spanId := binary.BigEndian.Uint64(rawID[:].([8]byte))
+	// log.Errorf("span id internal is, %s" , spanId)
+	// return spanId
+	// return decodeAPMId(hex.EncodeToString(rawID[:]))
 }
 
-func decodeAPMTraceID(rawID []byte) uint64 {
-	return decodeAPMId(hex.EncodeToString(rawID[:]))
+func decodeAPMTraceID(rawID string) uint64 {
+	return decodeAPMId(rawID[:])
+	// traceId := binary.BigEndian.Uint64(rawID[:].([16]byte))
+	// log.Errorf("trace id internal is, %s", traceId)
+	// return traceId
+	// return decodeAPMId(hex.EncodeToString(rawID[:]))
 }
 
 func decodeAPMId(id string) uint64 {
