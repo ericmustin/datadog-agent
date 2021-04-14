@@ -408,7 +408,7 @@ func decodeTraces(v Version, req *http.Request) (pb.Traces, pb.Traces, error) {
 		err := traces.UnmarshalMsgDictionary(buf.Bytes())
 		return traces, nil, err
 	case v1Otel:
-		var spans []pb.Span
+		var spans []*pb.Span
 		result := map[string]interface{}{}
 
 		if err := decodeOtelRequest(req, result); err != nil {
@@ -447,7 +447,7 @@ func decodeTraces(v Version, req *http.Request) (pb.Traces, pb.Traces, error) {
 
 		// otelspans, _ := ilspans["instrumentationLibrarySpans"].(map[string]interface{})
 		// log.Errorf("Here is OTEL payload %q", otelspans["spans"] )
-		return nil, tracesFromSpans(spans), nil
+		return nil, tracesFromSpansOtel(spans), nil
 	default:
 		// TODO: modify decodeRequest to account for otel? or use decodeRequest for model
 		// of how to handle a case: v05.1 endpoint 
@@ -878,6 +878,21 @@ func tracesFromSpans(spans []pb.Span) pb.Traces {
 	for _, s := range spans {
 		log.Errorf("sppan to iinnvvsiigate is %s", s)
 		byID[s.TraceID] = append(byID[s.TraceID], &s)
+	}
+	for _, t := range byID {
+		traces = append(traces, t)
+	}
+
+	return traces
+}
+
+func tracesFromSpansOtel(spans []*pb.Span) pb.Traces {
+
+	traces := pb.Traces{}
+	byID := make(map[uint64][]*pb.Span)
+	for _, s := range spans {
+		log.Errorf("sppan to iinnvvsiigate is %s", s)
+		byID[s.TraceID] = append(byID[s.TraceID], s)
 	}
 	for _, t := range byID {
 		traces = append(traces, t)

@@ -6,7 +6,7 @@
 package api
 
 import (
-	// "encoding/binary"
+	"encoding/binary"
 	// "encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -39,6 +39,10 @@ const (
 	attributeK8sPod                   string = "k8s.pod.name"
 	attributeServiceName              string = "service.name"
 	attributeServiceVersion           string = "service.version"
+	attributeSpanAnalyticsEvent       string = "analytics.event"
+	attributeSpanEventSampleRate      string = "_dd1.sr.eausr"
+	attributeSpanSamplingPriority     string = "sampling.priority"
+	attributeSpanType                 string = "span.type"
 	instrumentationLibraryName        string = "otel.library.name"
 	instrumentationLibraryVersion     string = "otel.library.version"
 	keySamplingPriority               string = "_sampling_priority_v1"
@@ -64,12 +68,12 @@ const (
 )
 
 // converts a Trace's resource spans into a trace payload
-func OtelResourceSpansToDatadogSpans(rs map[string]interface{}) []pb.Span {
+func OtelResourceSpansToDatadogSpans(rs map[string]interface{}) []*pb.Span {
 	// get env tag
 	// env := cfg.Env
 
 	log.Errorf("starti")
-	traces := []pb.Span{}
+	traces := []*pb.Span{}
 
 	resourceraw := rs["resource"]
 	ilsraw := rs["instrumentationLibrarySpans"]
@@ -102,10 +106,10 @@ func OtelResourceSpansToDatadogSpans(rs map[string]interface{}) []pb.Span {
 					// log.Errorf("nothing %s", traces)
 				} else {
 
-					log.Errorf("else")
 					if len(spans) > 0 {
 						for i := 0; i < len(spans); i++ { 
 							ilspan := spans[i].(map[string]interface{})
+							// log.Errorf("looping over ilspan, %s" i)
 							// get IL info
 
 							// extractInstrumentationLibraryTags(ilspan.InstrumentationLibrary(), datadogTags)
@@ -241,7 +245,7 @@ func extractInstrumentationLibraryTags(il map[string]interface{}, datadogTags ma
 func spanToDatadogSpan(s map[string]interface{},
 	serviceName string,
 	datadogTags map[string]string,
-) pb.Span {
+) *pb.Span {
 	tags := aggregateSpanTags(s, datadogTags)
 
 	// TODO: handle config for service name
@@ -296,13 +300,24 @@ func spanToDatadogSpan(s map[string]interface{},
 	var duration int64
 
 	if startTimeMap, stmok := s["startTimeUnixNano"]; stmok {
-		startTime = int64(startTimeMap.(float64))
+		// xType := fmt.Sprintf("%T", startTimeMap)
+		// log.Errorf("start type is %s", xType)
+		// unch := log.Errorf("start unch is %s", startTimeMap)
+		// unch = log.Errorf("start unch is %s", startTimeMap)
+		startMid := startTimeMap.(float64)
+		startTime = int64(startMid)
+		// after = log.Errorf("start unch is %s", startTime)
+		// afterUnix := int64(startTime)
+		log.Errorf("start time now %s and %s and %s", startTimeMap, startMid, startTime)
+
+
 	} else {
 		log.Errorf("start time error %s", startTimeMap)
 	}
 
 	if endTimeMap, stmok := s["endTimeUnixNano"]; stmok {
 		endTime = int64(endTimeMap.(float64))
+		// endTime = int64(endTimeMap)
 	} else {
 		log.Errorf("start time error %s", endTimeMap)
 	}
@@ -348,21 +363,29 @@ func spanToDatadogSpan(s map[string]interface{},
 	// spanId := make([]byte, 8)
 	// traceId := make([]byte, 16)
 	// parentSpanId := make([]byte, 8)
+	// var spanIdString string
+	// var traceIdString string
+	// var parentSpanIdString string
 	var spanId string
 	var traceId string
-	var parentSpanId string
+	var parentSpanId string	
 
 	if traceIdMap, tiok := s["traceId"]; tiok {
-		log.Errorf("traceddid is %s", traceIdMap)
-		xType := fmt.Sprintf("%T", traceIdMap)
-		log.Errorf("type is %s", xType) // "[]int"		
+		// log.Errorf("traceddid is %s", traceIdMap)
+		// xType := fmt.Sprintf("%T", traceIdMap)
+		// log.Errorf("type is %s", xType) // "[]int"		
 		// i, iserrr := traceIdMap.(string)
 
 		// if iserrr == nil {
 		// 	// log.Errorf("we ddint messed up trace %s", i )
+		// tidAString := fmt.Sprintf("%016x", traceIdMap)
+
+		// traceId = []byte(tidAString)
+		// traceId = []byte(traceIdString)
 		traceId = traceIdMap.(string)
 		// } else {
-		// 	log.Errorf("we did messed up %s", iserrr)			
+		// 	log.Errorf("we did messed up %s", iserrr)
+		// log.Errorf("before conversion tracce ? %s", traceIdMap )			
 		// }
 	} else {
 		log.Errorf("error traceId, %s", s["traceId"])
@@ -374,24 +397,59 @@ func spanToDatadogSpan(s map[string]interface{},
 
 		// if iserrr == nil {
 			// log.Errorf("we ddint messed up span %s", i )
+		// sidAString := fmt.Sprintf("%016x", spanIdMap)
+		// spanId = []byte(sidAString)
 		spanId = spanIdMap.(string)
+		// spanId = []byte(spanIdString)
 		// } else {
 		// 	log.Errorf("we did messed up %s", iserrr)
+		// log.Errorf("before conversion span ? %s", spanIdMap)
+
 		// }
 	} else {
 		log.Errorf("error spanId, %s", s["spanId"])
 	}
 
 
-	log.Errorf("traceId, spanId, parentSpanID %s %s", decodeAPMTraceID(traceId), decodeAPMSpanID(spanId), decodeAPMSpanID(parentSpanId) )
+	// log.Errorf("traceId, spanId, parentSpanID %s %s", decodeAPMTraceID(traceId), decodeAPMSpanID(spanId), decodeAPMSpanID(parentSpanId) )
+	// before := traceId[:]
+	// before_span := spanId[:]
 
-	span := pb.Span{
-		TraceID:  decodeAPMTraceID(traceId),
-		SpanID:   decodeAPMSpanID(spanId),
+	// before_alt_format := fmt.Sprintf("%016x", before)
+	// before_span_alt_format := fmt.Sprintf("%016x", before_span)
+	// log.Errorf("before")
+	// log.Errorf("before trace id %s and %s", before , before_alt_format )
+	// log.Errorf("before span id %s and %s", before_span , before_span_alt_format )
+
+
+	// middle := binary.BigEndian.Uint64([]byte(traceId[:]))
+	// middle_span := binary.BigEndian.Uint64([]byte(spanId[:]))
+
+	// middle_alt_format := fmt.Sprintf("%016x", middle)
+	// middle_span_alt_format := fmt.Sprintf("%016x", middle_span)
+	// log.Errorf("middle")
+	// log.Errorf("middle trace id %s and %s", middle , middle_alt_format )
+	// log.Errorf("middle span id %s and %s", middle_span , middle_span_alt_format )
+
+	log.Errorf("before %s and %s", traceId, spanId)
+	after := uint64(binary.BigEndian.Uint64([]byte(traceId[:])))
+	afterSpan := uint64(binary.BigEndian.Uint64([]byte(spanId[:])))
+
+	log.Errorf("after mods %s and %s", after, afterSpan)
+
+	// after_alt_format := fmt.Sprintf("%016x", after)
+	// after_span_alt_format := fmt.Sprintf("%016x", after_span)
+	// log.Errorf("after")
+	// log.Errorf("after trace id %s and %s", after , after_alt_format )
+	// log.Errorf("after span id %s and %s", after_span , after_span_alt_format )
+
+	span := &pb.Span{
+		TraceID:  after,
+		SpanID:   afterSpan,
 		// Name:     getDatadogSpanName(s, tags),
 		// Resource: getDatadogResourceName(s, tags),
-		Name:     "test_name",
-		Resource: "test_resource",		
+		Name:     "test_name_alt",
+		Resource: "test_resource_alt",		
 		Service:  normalizedServiceName,
 		Start:    int64(startTime),
 		Duration: duration,
@@ -408,8 +466,11 @@ func spanToDatadogSpan(s map[string]interface{},
 
 		// if iserrr == nil {
 			// log.Errorf("we ddint messed up %s", decodeAPMSpanID(i))
+
+			// psidAString := fmt.Sprintf("%016x", parentSpanIdMap)
 			parentSpanId = parentSpanIdMap.(string)
-			span.ParentID = decodeAPMSpanID(parentSpanId)
+			// parentSpanId = []byte(parentSpanIdString)		
+			span.ParentID = uint64(binary.BigEndian.Uint64([]byte(parentSpanId[:])))
 		// } else {
 		// 	log.Errorf("we did messed up %s", iserrr)
 		// }
@@ -417,13 +478,13 @@ func spanToDatadogSpan(s map[string]interface{},
 		log.Errorf("missing or error parentSpanId, %s", s["spanId"])
 	}
 
-	log.Errorf("oh ? %s", span)
+	log.Errorf("after span ? %s", span)
 
 
 	// // Set Attributes as Tags
-	// for key, val := range tags {
-	// 	setStringTag(span, key, val)
-	// }
+	for key, val := range tags {
+		setStringTag(span, key, val)
+	}
 
 	return span
 }
@@ -523,36 +584,43 @@ func decodeAPMId(id string) uint64 {
 	if len(id) > 16 {
 		id = id[len(id)-16:]
 	}
+
 	val, err := strconv.ParseUint(id, 16, 64)
+
 	if err != nil {
 		return 0
 	}
+
+	// TODO: check for pr
+	// valAsString := fmt.Sprintf("%016x", val)
+	// valAsInt, _ := strconv.ParseUint(valAsString, 16, 64)
+
 	return val
 }
 
-// func setMetric(s *pb.Span, key string, v float64) {
-// 	switch key {
-// 	case ext.SamplingPriority:
-// 		s.Metrics[keySamplingPriority] = v
-// 	default:
-// 		s.Metrics[key] = v
-// 	}
-// }
+func setMetric(s *pb.Span, key string, v float64) {
+	switch key {
+	case attributeSpanSamplingPriority:
+		s.Metrics[keySamplingPriority] = v
+	default:
+		s.Metrics[key] = v
+	}
+}
 
-// func setStringTag(s *pb.Span, key, v string) {
-// 	switch key {
-// 	// if a span has `service.name` set as the tag
-// 	case ext.ServiceName:
-// 		s.Service = v
-// 	case ext.SpanType:
-// 		s.Type = v
-// 	case ext.AnalyticsEvent:
-// 		if v != "false" {
-// 			setMetric(s, ext.EventSampleRate, 1)
-// 		} else {
-// 			setMetric(s, ext.EventSampleRate, 0)
-// 		}
-// 	default:
-// 		s.Meta[key] = v
-// 	}
-// }
+func setStringTag(s *pb.Span, key, v string) {
+	switch key {
+	// if a span has `service.name` set as the tag
+	case attributeServiceName:
+		s.Service = v
+	case attributeSpanType:
+		s.Type = v
+	case attributeSpanAnalyticsEvent:
+		if v != "false" {
+			setMetric(s, attributeSpanEventSampleRate, 1)
+		} else {
+			setMetric(s, attributeSpanEventSampleRate, 0)
+		}
+	default:
+		s.Meta[key] = v
+	}
+}
