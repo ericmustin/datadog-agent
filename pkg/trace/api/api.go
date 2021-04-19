@@ -412,41 +412,25 @@ func decodeTraces(v Version, req *http.Request) (pb.Traces, pb.Traces, error) {
 		result := map[string]interface{}{}
 
 		if err := decodeOtelRequest(req, result); err != nil {
-			log.Errorf("we blew up")
+			log.Errorf("could not decode v1.opentelemetry version request %s", err)
 			return nil, nil, err
 		}
 
-		// ilspans , _ := result["resourceSpans"]
-
-		log.Errorf("keys")
-
 	    if rspans, ok := result["resourceSpans"].([]interface{}); ok {
 	        for _, rsval := range rspans {
+	        	// TODO: this is all much easier if we can use the ResourceSpans protos, couldn't get vendoring to work
+	        	// fixing this would make this is all much simpler.
 	        	// if ilspans, ilok := rsval.(v1.ResourceSpans); ilok {
 	        	if ilspans, ilok := rsval.(map[string]interface{}); ilok {
 
 	        		ddSpans := OtelResourceSpansToDatadogSpans(ilspans)
 					spans = append(spans,ddSpans...)
-	        		// for ilkey, ilval := range ilspans {
-	        		log.Errorf("spansss lengh is %s", len(spans))
-
-			        // log.Errorf(" [========>] %s", ilspans)	        			
-	        		// }
-	        	} else {
-					log.Errorf(" [ehh========>] %s", ilok)	        			
+	        		
+	        		// log.Errorf("appended %s spans", len(spans))
 	        	}
 	        }
-	    } else {
-	        log.Errorf("record not a map[string]interface{}: %v\n", result["resourceSpans"])
 	    }
 
-		// for k, _ := range result["resourceSpans"] {
-		// 	log.Errorf("key %q", k)
-		// }
-
-
-		// otelspans, _ := ilspans["instrumentationLibrarySpans"].(map[string]interface{})
-		// log.Errorf("Here is OTEL payload %q", otelspans["spans"] )
 		return nil, tracesFromSpansOtel(spans), nil
 	default:
 		// TODO: modify decodeRequest to account for otel? or use decodeRequest for model
@@ -538,7 +522,7 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 	// if it expects a payload with rate limiting info, what status codes / msgs, 
 	// timeout, rate limiting resp, etc etc. we probably can't do all of it (timeouts, for ex),
 	// but we can at least attempt to function with some of the similar req/res  settings
-	_, oteltraces, err := decodeTraces(v, req)
+	traces, oteltraces, err := decodeTraces(v, req)
 	if err != nil {
 		httpDecodingError(err, []string{"handler:traces", fmt.Sprintf("v:%s", v)}, w)
 		switch err {
@@ -553,59 +537,81 @@ func (r *HTTPReceiver) handleTraces(v Version, w http.ResponseWriter, req *http.
 				atomic.AddInt64(&ts.TracesDropped.DecodingError, tracen)
 			}
 		}
-		log.Errorf("1st in!")
+
 		log.Errorf("Cannot decode %s traces payload: %v", v, err)
 		return
 	}
-
-	if oteltraces != nil {
-		// convert oteltraces to pb.Traces: 
-
-		// func convertToDDTrace(otelta ExportTraceServiceRequest, traces pb.Traces) pb.Traces {
-		//     traces = translate(oteltraces)
-		//     return traces, nil
-		// }
-		log.Errorf("we in!")
-	} else {
-		log.Errorf("we out!")
-	}
-
 
 	// TODO: modify replyOk to account for otel status codes
 	// and any rate by  service info
 	r.replyOK(v, w)
 
-	log.Errorf("length now is %s", len(oteltraces))
-	atomic.AddInt64(&ts.TracesReceived, int64(len(oteltraces)))
-	atomic.AddInt64(&ts.TracesBytes, req.Body.(*LimitedReader).Count)
-	atomic.AddInt64(&ts.PayloadAccepted, 1)
+	if oteltraces != nil {
+		// log.Errorf("length dd-otel traces received is %s", len(traces))
+		atomic.AddInt64(&ts.TracesReceived, int64(len(oteltraces)))
+		atomic.AddInt64(&ts.TracesBytes, req.Body.(*LimitedReader).Count)
+		atomic.AddInt64(&ts.PayloadAccepted, 1)
 
-	// TODO: modify Payload to account for otel
-	// getContainerTags and Client* look for request headers that differ in otel
-	payload := &Payload{
-		Source:                 ts,
-		Traces:                 oteltraces,
-		ContainerTags:          getContainerTags(req.Header.Get(headerContainerID)),
-		ClientComputedTopLevel: req.Header.Get(headerComputedTopLevel) != "",
-		ClientComputedStats:    req.Header.Get(headerComputedStats) != "",
-		ClientDroppedP0s:       droppedTracesFromHeader(req.Header, ts),
-	}
+		// TODO: modify Payload to account for otel
+		// getContainerTags and Client* look for request headers that differ in otel
+		payload := &Payload{
+			Source:                 ts,
+			Traces:                 oteltraces,
+			ContainerTags:          getContainerTags(req.Header.Get(headerContainerID)),
+			ClientComputedTopLevel: req.Header.Get(headerComputedTopLevel) != "",
+			ClientComputedStats:    req.Header.Get(headerComputedStats) != "",
+			ClientDroppedP0s:       droppedTracesFromHeader(req.Header, ts),
+		}
 
-	select {
-	case r.out <- payload:
-		// ok
-	default:
-		// channel blocked, add a goroutine to ensure we never drop
-		r.wg.Add(1)
-		go func() {
-			metrics.Count("datadog.trace_agent.receiver.queued_send", 1, nil, 1)
-			defer func() {
-				r.wg.Done()
-				watchdog.LogOnPanic()
+		select {
+		case r.out <- payload:
+			// ok
+		default:
+			// channel blocked, add a goroutine to ensure we never drop
+			r.wg.Add(1)
+			go func() {
+				metrics.Count("datadog.trace_agent.receiver.queued_send", 1, nil, 1)
+				defer func() {
+					r.wg.Done()
+					watchdog.LogOnPanic()
+				}()
+				r.out <- payload
 			}()
-			r.out <- payload
-		}()
+		}
+	} else {
+		// log.Errorf("length dd-classic traces recd is %s", len(traces))
+		atomic.AddInt64(&ts.TracesReceived, int64(len(traces)))
+		atomic.AddInt64(&ts.TracesBytes, req.Body.(*LimitedReader).Count)
+		atomic.AddInt64(&ts.PayloadAccepted, 1)
+
+		// TODO: modify Payload to account for otel
+		// getContainerTags and Client* look for request headers that differ in otel
+		payload := &Payload{
+			Source:                 ts,
+			Traces:                 traces,
+			ContainerTags:          getContainerTags(req.Header.Get(headerContainerID)),
+			ClientComputedTopLevel: req.Header.Get(headerComputedTopLevel) != "",
+			ClientComputedStats:    req.Header.Get(headerComputedStats) != "",
+			ClientDroppedP0s:       droppedTracesFromHeader(req.Header, ts),
+		}
+
+		select {
+		case r.out <- payload:
+			// ok
+		default:
+			// channel blocked, add a goroutine to ensure we never drop
+			r.wg.Add(1)
+			go func() {
+				metrics.Count("datadog.trace_agent.receiver.queued_send", 1, nil, 1)
+				defer func() {
+					r.wg.Done()
+					watchdog.LogOnPanic()
+				}()
+				r.out <- payload
+			}()
+		}
 	}
+
 }
 
 func droppedTracesFromHeader(h http.Header, ts *info.TagStats) int64 {
@@ -811,10 +817,8 @@ func decodeRequest(req *http.Request, dest *pb.Traces) error {
 func decodeOtelRequest(req *http.Request, oteldest map[string]interface{} ) error {
 	switch mediaType := getMediaType(req); mediaType {
 	case "application/json":
-		log.Errorf("okok ayyy blew up inner")
 		fallthrough
 	case "text/json":
-		log.Errorf("ayyy blew up inner")
 		fallthrough
 	case "":
 		var t map[string]interface{}
@@ -827,42 +831,9 @@ func decodeOtelRequest(req *http.Request, oteldest map[string]interface{} ) erro
 		json.Unmarshal(body, &t)
 		mapstructure.Decode(t, &oteldest)
 
-
-		// log.Errorf("on decodeOtelRequest payload %+v", t)
-
-		// keys := make([]interface{}, 0, len(t))
-		// values := make([]interface{}, 0, len(t))
-
-		// for k, _ := range oteldest {
-		// 	log.Errorf("key %q", k)
-		// }
-
-		// for keyv, valuev := range values {
-		// 	log.Errorf("keyv =  %+v", keyv)
-		// 	log.Errorf("valuev =  %+v", valuev)
-
-		// 	for keyvv, valuevv := range valuev {
-		// 		log.Errorf("keyvv =  %+v", keyvv)
-		// 		log.Errorf("valuevv =  %+v", valuevv)				
-		// 	}
-		// }
-
-		// log.Errorf("keys %+v", keys)
-		// log.Errorf("values %+v", values)
-		// log.Errorf("on decodeOtelRequest target payload %+v", oteldest)
-		// thing := json.NewDecoder(req.Body).Decode(&oteldest)
-
-
-		// log.Errorf("on decodeOtelRequest target payload after %q", oteldest["resourceSpans"] )
-		// log.Errorf("on decodeOtelRequest target payload after ok %q", req.Body)
-		// log.Errorf("on decodeOtelRequest target payload after also %+v", thing)
-
 		return err
 	default:
 		// do our best
-		log.Errorf("Here is")
-		log.Errorf("Here is decodeOtelRequest payload %+v", req.Body)
-
 		if err1 := json.NewDecoder(req.Body).Decode(oteldest); err1 != nil {
 			return fmt.Errorf("could not decode JSON (%q)", err1)
 		}
@@ -876,7 +847,6 @@ func tracesFromSpans(spans []pb.Span) pb.Traces {
 	traces := pb.Traces{}
 	byID := make(map[uint64][]*pb.Span)
 	for _, s := range spans {
-		log.Errorf("sppan to iinnvvsiigate is %s", s)
 		byID[s.TraceID] = append(byID[s.TraceID], &s)
 	}
 	for _, t := range byID {
@@ -891,7 +861,6 @@ func tracesFromSpansOtel(spans []*pb.Span) pb.Traces {
 	traces := pb.Traces{}
 	byID := make(map[uint64][]*pb.Span)
 	for _, s := range spans {
-		log.Errorf("sppan to iinnvvsiigate is %s", s)
 		byID[s.TraceID] = append(byID[s.TraceID], s)
 	}
 	for _, t := range byID {

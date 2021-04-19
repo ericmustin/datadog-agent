@@ -7,36 +7,31 @@ package api
 
 import (
 	"encoding/binary"
-	// "encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
-	// "time"
-
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 	"github.com/DataDog/datadog-agent/pkg/trace/pb"
 	"github.com/DataDog/datadog-agent/pkg/trace/traceutil"
-
-	// "github.com/DataDog/datadog-agent/pkg/trace/exportable/pb"
-	// "go.opentelemetry.io/collector/consumer/pdata"
-	// "go.opentelemetry.io/collector/translator/conventions"
-	// tracetranslator "go.opentelemetry.io/collector/translator/trace"
-	// "go.uber.org/zap"
-	// "gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
-	// "gopkg.in/zorkian/go-datadog-api.v2"
-
-	// "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/config"
-	// "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/metadata"
-	// "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/metrics"
-	// "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/utils"
 )
 
 const (
 	attributeContainerID              string = "container.id"
 	attributeDeploymentEnvironment    string = "deployment.environment"
 	attributeDatadogEnvironment       string = "env"
+	attributeExceptionEventName       string = "exception"
+	attributeExceptionMessage         string = "exception.message"
+	attributeExceptionStacktrace      string = "exception.stacktrace"
+	attributeExceptionType            string = "exception.type"
+	attributeHTTPMethod               string = "http.method"
+	attributeHTTPRoute                string = "http.route"
+	attributeHTTPStatusCode           string = "http.status_code"
 	attributeK8sPod                   string = "k8s.pod.name"
+	attributeMessagingOperation       string = "messaging.operation"
+	attributeMessagingDestination     string = "messaging.destination"
+	attributeRPCMethod                string = "rpc.method"
+	attributeRPCService               string = "rpc.service"
 	attributeServiceName              string = "service.name"
 	attributeServiceVersion           string = "service.version"
 	attributeSpanAnalyticsEvent       string = "analytics.event"
@@ -59,7 +54,12 @@ const (
 	eventNameTag                      string = "name"
 	eventAttrTag                      string = "attributes"
 	eventTimeTag                      string = "time"
+	otelOkCode                        int32 = 1
+	otelErrorCode                     int32 = 2
 	resourceNoServiceName             string = "OTLPResourceNoServiceName"
+	tagErrorType                      string = "error.type"
+	tagErrorMsg                       string = "error.msg"
+	tagErrorStack                     string = "error.stack"
 	tagW3CTraceState                  string = "w3c.tracestate"
 	// tagContainersTags specifies the name of the tag which holds key/value
 	// pairs representing information about the container (Docker, EC2, etc).
@@ -67,25 +67,34 @@ const (
 
 )
 
+var spanKindMap = map[int32]string{
+	0: "SPAN_KIND_UNSPECIFIED",
+	1: "SPAN_KIND_INTERNAL",
+	2: "SPAN_KIND_SERVER",
+	3: "SPAN_KIND_CLIENT",
+	4: "SPAN_KIND_PRODUCER",
+	5: "SPAN_KIND_CONSUMER",
+}
+
 // converts a Trace's resource spans into a trace payload
+// gets a service name tag and an tags hash seeded with resource attributes
+// gets environment name tag from tags 
+// TODO: gets config as falllback
+// loop over instrumentationn library span batch:
+//   - extract instrumentationn library name and version from json and apply to tags
+//   -  loop over span batch:
+// 		- convert span to datadog span, passing in tags and config
+//			- fill in details and translation but broadly:
+// 				- trace_id, span_id, parent_span_id, start / duration in nano, meta, metrics, status, tags, err tags, resource, op name, kind/type , unified service tags
+// 		- add to trace map 
+// export trace map as pb.Traces []*Trace
 func OtelResourceSpansToDatadogSpans(rs map[string]interface{}) []*pb.Span {
 	// get env tag
 	// env := cfg.Env
-
-	log.Errorf("starti")
 	traces := []*pb.Span{}
 
 	resourceraw := rs["resource"]
 	ilsraw := rs["instrumentationLibrarySpans"]
-
-
-	log.Errorf("neext")
-	// payload := pb.TracePayload{
-	// 	HostName:     hostname,
-	// 	Env:          env,
-	// 	Traces:       []*pb.APITrace{},
-	// 	Transactions: []*pb.Span{},
-	// }
 
 	// if resource.Attributes().Len() == 0 && ilss.Len() == 0 {
 	// 	return payload
@@ -93,31 +102,22 @@ func OtelResourceSpansToDatadogSpans(rs map[string]interface{}) []*pb.Span {
 
 	if spans, ilok := ilsraw.([]interface{}); ilok {
 		if resource, rok := resourceraw.(map[string]interface{}); rok {
-			// log.Errorf("reszource isz %s", resource["attributes"])
-
 			resourceServiceName, datadogTags := resourceToDatadogServiceNameAndAttributeMap(resource)
 			extractDatadogEnv(datadogTags)
 
-			// log.Errorf("translated resource attr : %s and %s", resourceServiceName, datadogTags)
-
 			if attributes, aok := resource["attributes"].([]interface{}); aok {
 				if len(attributes) == 0 && len(spans) == 0 {
-
-					// log.Errorf("nothing %s", traces)
+					log.Errorf("no traces in otey payload")
 				} else {
 
 					if len(spans) > 0 {
 						for i := 0; i < len(spans); i++ { 
 							ilspan := spans[i].(map[string]interface{})
-							// log.Errorf("looping over ilspan, %s" i)
 							// get IL info
 
 							// extractInstrumentationLibraryTags(ilspan.InstrumentationLibrary(), datadogTags)
 							il := ilspan["instrumentationLibrary"].(map[string]interface{})
 							extractInstrumentationLibraryTags(il, datadogTags)
-
-							// log.Errorf("il lib %s %s", il["name"], il["version"] )
-							// log.Errorf("translated ilspans : %s", ilspan)
 
 							ilSpanList := ilspan["spans"].([]interface{})
 
@@ -126,41 +126,14 @@ func OtelResourceSpansToDatadogSpans(rs map[string]interface{}) []*pb.Span {
 								ddSpan := spanToDatadogSpan(span, resourceServiceName, datadogTags)
 								traces = append(traces, ddSpan)
 							}
-
-							// log.Errorf("translated resource attr : %s", attributes)
-
-							// TODO:
-							// get a service name tag and an tags hash seeded with resource attributes
-							// get environment name tag from tags 
-							// get config as falllback
-							// loop over instrumentationn library span batch:
-							//   - extract instrumentationn library name and version from json and apply to tags
-							//   -  loop over span batch:
-							// 		- convert span to datadog span, passing in tags and config
-							//			- fill in details and translation but broadly:
-							// 				- trace_id, span_id, parent_span_id, start+duration (nano?), meta, metrics, status, tags, err tags, resource, op name, kind/type , unified service tags...(?)
-							// 		- add to trace map 
-							// export trace map as pb.Traces []*Trace
 						}
-
-
-					} else {
-						// return traces
-						log.Errorf("nada")
 					}
-
 				}
-			} else {
-				log.Errorf("na 3rd")
 			}
-		} else {
-			log.Errorf("na 2nd")
 		}
-	} else {
-		log.Errorf("na 1st")
 	}
 
-	log.Errorf("inner the lentth is %s", len(traces))
+	log.Errorf("returning %s traces", len(traces))
 	return traces
 }
 
@@ -183,25 +156,18 @@ func resourceToDatadogServiceNameAndAttributeMap(
 
 		for i := 0; i < len(attrs); i++ { 
 			v := attrs[i].(map[string]interface{})
-			// log.Errorf("na %s", v)
 			key := v["key"].(string)
 
 			if valueMap, vok := v["value"].(map[string]interface{}); vok {
 				value := AttributeValueToString(valueMap)
-				datadogTags[key] = value
-				// log.Errorf("na %s", datadogTags)
+				datadogTags[key] = value				
 			}
 		}
-		// attrs.ForEach(func(k string, v map[stringValue]string) {
-		// 	log.Errorf("na %s", v)
-		// 	// datadogTags[k] = tracetranslator.AttributeValueToString(v, false)
-		// })
 		
 		serviceName = extractDatadogServiceName(datadogTags)
 
 		return serviceName, datadogTags
 	} else {
-		log.Errorf("no buenoo")
 		datadogTags = make(map[string]string, 1)
 		serviceName = extractDatadogServiceName(datadogTags)
 
@@ -276,9 +242,6 @@ func spanToDatadogSpan(s map[string]interface{},
 	}
 
 	// get tracestate as just a general tag
-	// log.Errorf("ok the spann is %s", s)
-	// log.Errorf("and the other info we got %s , %s", normalizedServiceName, tags)
-
 	// TODO: handle trace state
 	// if len(s.TraceState()) > 0 {
 	// 	tags[tagW3CTraceState] = string(s.TraceState())
@@ -289,37 +252,21 @@ func spanToDatadogSpan(s map[string]interface{},
 	// if s.Events().Len() > 0 {
 	// 	tags[eventsTag] = eventsToString(s.Events())
 	// }
-
-	// // get start/end time to calc duration
-	// startTime := s.StartTime()
-	// endTime := s.EndTime()
-	// duration := int64(endTime) - int64(startTime)
-
 	var startTime int64
 	var endTime int64
 	var duration int64
 
 	if startTimeMap, stmok := s["startTimeUnixNano"]; stmok {
-		// xType := fmt.Sprintf("%T", startTimeMap)
-		// log.Errorf("start type is %s", xType)
-		// unch := log.Errorf("start unch is %s", startTimeMap)
-		// unch = log.Errorf("start unch is %s", startTimeMap)
 		startMid := startTimeMap.(float64)
 		startTime = int64(startMid)
-		// after = log.Errorf("start unch is %s", startTime)
-		// afterUnix := int64(startTime)
-		log.Errorf("start time now %s and %s and %s", startTimeMap, startMid, startTime)
-
-
 	} else {
 		log.Errorf("start time error %s", startTimeMap)
 	}
 
 	if endTimeMap, stmok := s["endTimeUnixNano"]; stmok {
 		endTime = int64(endTimeMap.(float64))
-		// endTime = int64(endTimeMap)
 	} else {
-		log.Errorf("start time error %s", endTimeMap)
+		log.Errorf("end time error %s", endTimeMap)
 	}
 
 	if endTime == 0 {
@@ -328,158 +275,51 @@ func spanToDatadogSpan(s map[string]interface{},
 	} else {
 		duration = endTime - startTime	
 	}
-	
-	log.Errorf("duration %s %s %s", duration, startTime, endTime)
-	// // it's possible end time is unset, so default to 0 rather than using a negative number
-	// if s.EndTime() == 0 {
-	// 	duration = 0
-	// }
 
-	// TODO update error check to parse events for now just mark false (1/0 int32)
-	var isSpanError int32
-	isSpanError = 0
 	// // by checking for error and setting error tags before creating datadog span
 	// // we can then set Error field when creating and predefine a max meta capacity
-	// isSpanError := getSpanErrorAndSetTags(s, tags)
+	status := s["status"].(map[string]interface{})
 
-	// span := &pb.Span{
-	// 	TraceID:  decodeAPMTraceID(s.TraceID().Bytes()),
-	// 	SpanID:   decodeAPMSpanID(s.SpanID().Bytes()),
-	// 	Name:     getDatadogSpanName(s, tags),
-	// 	Resource: getDatadogResourceName(s, tags),
-	// 	Service:  normalizedServiceName,
-	// 	Start:    int64(startTime),
-	// 	Duration: duration,
-	// 	Metrics:  map[string]float64{},
-	// 	Meta:     make(map[string]string, len(tags)),
-	// 	Type:     spanKindToDatadogType(s.Kind()),
-	// 	Error:    isSpanError,
-	// }
+	log.Errorf("status is type %T and looks like %s", status, status)
+	isSpanError := getSpanErrorAndSetTags(s, tags)
 
-	// if !s.ParentSpanID().IsEmpty() {
-	// 	span.ParentID = decodeAPMSpanID(s.ParentSpanID().Bytes())
-	// }
-
-	// spanId := make([]byte, 8)
-	// traceId := make([]byte, 16)
-	// parentSpanId := make([]byte, 8)
-	// var spanIdString string
-	// var traceIdString string
-	// var parentSpanIdString string
 	var spanId string
 	var traceId string
 	var parentSpanId string	
 
 	if traceIdMap, tiok := s["traceId"]; tiok {
-		// log.Errorf("traceddid is %s", traceIdMap)
-		// xType := fmt.Sprintf("%T", traceIdMap)
-		// log.Errorf("type is %s", xType) // "[]int"		
-		// i, iserrr := traceIdMap.(string)
-
-		// if iserrr == nil {
-		// 	// log.Errorf("we ddint messed up trace %s", i )
-		// tidAString := fmt.Sprintf("%016x", traceIdMap)
-
-		// traceId = []byte(tidAString)
-		// traceId = []byte(traceIdString)
 		traceId = traceIdMap.(string)
-		// } else {
-		// 	log.Errorf("we did messed up %s", iserrr)
-		// log.Errorf("before conversion tracce ? %s", traceIdMap )			
-		// }
 	} else {
 		log.Errorf("error traceId, %s", s["traceId"])
 	}
 
 	if spanIdMap, tiok := s["spanId"]; tiok {
-		// log.Errorf("spanddid is %s", spanIdMap)
-		// i, iserrr := spanIdMap.(string)
-
-		// if iserrr == nil {
-			// log.Errorf("we ddint messed up span %s", i )
-		// sidAString := fmt.Sprintf("%016x", spanIdMap)
-		// spanId = []byte(sidAString)
 		spanId = spanIdMap.(string)
-		// spanId = []byte(spanIdString)
-		// } else {
-		// 	log.Errorf("we did messed up %s", iserrr)
-		// log.Errorf("before conversion span ? %s", spanIdMap)
-
-		// }
 	} else {
 		log.Errorf("error spanId, %s", s["spanId"])
 	}
 
-
-	// log.Errorf("traceId, spanId, parentSpanID %s %s", decodeAPMTraceID(traceId), decodeAPMSpanID(spanId), decodeAPMSpanID(parentSpanId) )
-	// before := traceId[:]
-	// before_span := spanId[:]
-
-	// before_alt_format := fmt.Sprintf("%016x", before)
-	// before_span_alt_format := fmt.Sprintf("%016x", before_span)
-	// log.Errorf("before")
-	// log.Errorf("before trace id %s and %s", before , before_alt_format )
-	// log.Errorf("before span id %s and %s", before_span , before_span_alt_format )
-
-
-	// middle := binary.BigEndian.Uint64([]byte(traceId[:]))
-	// middle_span := binary.BigEndian.Uint64([]byte(spanId[:]))
-
-	// middle_alt_format := fmt.Sprintf("%016x", middle)
-	// middle_span_alt_format := fmt.Sprintf("%016x", middle_span)
-	// log.Errorf("middle")
-	// log.Errorf("middle trace id %s and %s", middle , middle_alt_format )
-	// log.Errorf("middle span id %s and %s", middle_span , middle_span_alt_format )
-
-	log.Errorf("before %s and %s", traceId, spanId)
-	after := uint64(binary.BigEndian.Uint64([]byte(traceId[:])))
-	afterSpan := uint64(binary.BigEndian.Uint64([]byte(spanId[:])))
-
-	log.Errorf("after mods %s and %s", after, afterSpan)
-
-	// after_alt_format := fmt.Sprintf("%016x", after)
-	// after_span_alt_format := fmt.Sprintf("%016x", after_span)
-	// log.Errorf("after")
-	// log.Errorf("after trace id %s and %s", after , after_alt_format )
-	// log.Errorf("after span id %s and %s", after_span , after_span_alt_format )
+	formattedTraceId := uint64(binary.BigEndian.Uint64([]byte(traceId[:])))
+	formattedSpanId := uint64(binary.BigEndian.Uint64([]byte(spanId[:])))
 
 	span := &pb.Span{
-		TraceID:  after,
-		SpanID:   afterSpan,
-		// Name:     getDatadogSpanName(s, tags),
-		// Resource: getDatadogResourceName(s, tags),
-		Name:     "test_name_alt",
-		Resource: "test_resource_alt",		
+		TraceID:  formattedTraceId,
+		SpanID:   formattedSpanId,
+		Name:     getDatadogSpanName(s, tags),
+		Resource: getDatadogResourceName(s, tags),		
 		Service:  normalizedServiceName,
 		Start:    int64(startTime),
 		Duration: duration,
 		Metrics:  map[string]float64{},
 		Meta:     make(map[string]string, len(tags)),
-		// Type:     spanKindToDatadogType(s.Kind()),
-		Type:     "http",
+		Type:     spanKindToDatadogType(NormalizeSpanKind(int32(s["kind"].(float64)))),
 		Error:    isSpanError,
 	}
 
 	if parentSpanIdMap, psiok := s["parentSpanId"]; psiok {
-		// log.Errorf("parentSpanddid is %s", parentSpanIdMap)
-		// i, iserrr := parentSpanIdMap.(string)
-
-		// if iserrr == nil {
-			// log.Errorf("we ddint messed up %s", decodeAPMSpanID(i))
-
-			// psidAString := fmt.Sprintf("%016x", parentSpanIdMap)
-			parentSpanId = parentSpanIdMap.(string)
-			// parentSpanId = []byte(parentSpanIdString)		
-			span.ParentID = uint64(binary.BigEndian.Uint64([]byte(parentSpanId[:])))
-		// } else {
-		// 	log.Errorf("we did messed up %s", iserrr)
-		// }
-	} else {
-		log.Errorf("missing or error parentSpanId, %s", s["spanId"])
+		parentSpanId = parentSpanIdMap.(string)
+		span.ParentID = uint64(binary.BigEndian.Uint64([]byte(parentSpanId[:])))
 	}
-
-	log.Errorf("after span ? %s", span)
-
 
 	// // Set Attributes as Tags
 	for key, val := range tags {
@@ -502,19 +342,13 @@ func aggregateSpanTags(span map[string]interface{}, datadogTags map[string]strin
 
 	for i := 0; i < len(spanAttributes); i++ { 
 		attributeMap := spanAttributes[i].(map[string]interface{})
-		// log.Errorf("na %s", v)
 		key := attributeMap["key"].(string)
 
 		if valueMap, vok := attributeMap["value"].(map[string]interface{}); vok {
-			// log.Errorf("vvaluema is %s", valueMap)
 			value := AttributeValueToString(valueMap)
 			spanTags[key] = value
-			// log.Errorf("na %s", datadogTags)
-		} else {
-			log.Errorf("nooooope %s", attributeMap)
 		}
 	}
-
 
 	// TODO: does this get done later in the pipeline?
 	spanTags[tagContainersTags] = buildDatadogContainerTags(spanTags)
@@ -564,21 +398,6 @@ func AttributeValueToString(attr map[string]interface{}) string {
 	return modifiedvalue
 }
 
-func decodeAPMSpanID(rawID string) uint64 {
-	return decodeAPMId(rawID[:])
-	// spanId := binary.BigEndian.Uint64(rawID[:].([8]byte))
-	// log.Errorf("span id internal is, %s" , spanId)
-	// return spanId
-	// return decodeAPMId(hex.EncodeToString(rawID[:]))
-}
-
-func decodeAPMTraceID(rawID string) uint64 {
-	return decodeAPMId(rawID[:])
-	// traceId := binary.BigEndian.Uint64(rawID[:].([16]byte))
-	// log.Errorf("trace id internal is, %s", traceId)
-	// return traceId
-	// return decodeAPMId(hex.EncodeToString(rawID[:]))
-}
 
 func decodeAPMId(id string) uint64 {
 	if len(id) > 16 {
@@ -590,10 +409,6 @@ func decodeAPMId(id string) uint64 {
 	if err != nil {
 		return 0
 	}
-
-	// TODO: check for pr
-	// valAsString := fmt.Sprintf("%016x", val)
-	// valAsInt, _ := strconv.ParseUint(valAsString, 16, 64)
 
 	return val
 }
@@ -620,7 +435,215 @@ func setStringTag(s *pb.Span, key, v string) {
 		} else {
 			setMetric(s, attributeSpanEventSampleRate, 0)
 		}
+	case "http.status_code":
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			log.Errorf("cant set status code %s %s", v, err)
+			s.Meta[key] = v
+		} else {
+			setMetric(s, key, f)	
+		}
 	default:
 		s.Meta[key] = v
 	}
 }
+
+func getDatadogSpanName(span map[string]interface{}, datadogTags map[string]string) string {
+	// largely a port of logic here
+	// https://github.com/open-telemetry/opentelemetry-python/blob/b2559409b2bf82e693f3e68ed890dd7fd1fa8eae/exporter/opentelemetry-exporter-datadog/src/opentelemetry/exporter/datadog/exporter.py#L213
+	// Get span name by using instrumentation library name and span kind while backing off to span.kind
+
+	// The spec has changed over time and, depending on the original exporter, IL Name could represented a few different ways
+	// so we try to account for all permutations
+	if ilnOtlp, okOtlp := datadogTags[instrumentationLibraryName]; okOtlp {
+		name, _ := traceutil.NormalizeName(fmt.Sprintf("%s.%s", ilnOtlp, NormalizeSpanKind(int32(span["kind"].(float64)))))
+		
+		return traceutil.NormalizeTag(name)
+	}
+
+	if ilnOtelCur, okOtelCur := datadogTags[currentILNameTag]; okOtelCur {
+		name, _ := traceutil.NormalizeName(fmt.Sprintf("%s.%s", ilnOtelCur, NormalizeSpanKind(int32(span["kind"].(float64)))))
+		
+		return traceutil.NormalizeTag(name)
+	}
+
+	if ilnOtelOld, okOtelOld := datadogTags[oldILNameTag]; okOtelOld {
+		name, _ := traceutil.NormalizeName(fmt.Sprintf("%s.%s", ilnOtelOld, NormalizeSpanKind(int32(span["kind"].(float64)))))
+		
+		return traceutil.NormalizeTag(name)
+	}
+
+	name, _ := traceutil.NormalizeName(fmt.Sprintf("%s.%s", "opentelemetry", NormalizeSpanKind(int32(span["kind"].(float64)))))
+	
+	return traceutil.NormalizeTag(name)
+}
+
+// NormalizeSpanKind returns a span kind with the SPAN_KIND prefix trimmed off
+func NormalizeSpanKind(kind int32) string {
+	if kindString, ok := spanKindMap[kind]; ok {
+		return strings.TrimPrefix(kindString, "SPAN_KIND_")
+	}
+	
+	return "UNKNOWN"
+}
+
+func getDatadogResourceName(s map[string]interface{}, datadogTags map[string]string) string {
+	// largely a port of logic here
+	// https://github.com/open-telemetry/opentelemetry-python/blob/b2559409b2bf82e693f3e68ed890dd7fd1fa8eae/exporter/opentelemetry-exporter-datadog/src/opentelemetry/exporter/datadog/exporter.py#L229
+	// Get span resource name by checking for existence http.method + http.route 'GET /api'
+	// Also check grpc path as fallback for http requests
+	// backing off to just http.method, and then span.name if unrelated to http
+	if method, methodOk := datadogTags[attributeHTTPMethod]; methodOk {
+		if route, routeOk := datadogTags[attributeHTTPRoute]; routeOk {
+			return fmt.Sprintf("%s %s", method, route)
+		}
+
+		if grpcRoute, grpcRouteOk := datadogTags[grpcPath]; grpcRouteOk {
+			return fmt.Sprintf("%s %s", method, grpcRoute)
+		}
+
+		return method
+	}
+
+	//add resource conventions for messaging queues, operaton + destination
+	if msgOperation, msgOperationOk := datadogTags[attributeMessagingOperation]; msgOperationOk {
+		if destination, destinationOk := datadogTags[attributeMessagingDestination]; destinationOk {
+			return fmt.Sprintf("%s %s", msgOperation, destination)
+		}
+
+		return msgOperation
+	}
+
+	// add resource convention for rpc services , method+service, fallback to just method if no service attribute
+	if rpcMethod, rpcMethodOk := datadogTags[attributeRPCMethod]; rpcMethodOk {
+		if rpcService, rpcServiceOk := datadogTags[attributeRPCService]; rpcServiceOk {
+			return fmt.Sprintf("%s %s", rpcMethod, rpcService)
+		}
+
+		return rpcMethod
+	}
+
+	return fmt.Sprintf("%s", s["name"].(string))
+}
+
+// TODO: some clients send SPAN_KIND_UNSPECIFIED for valid kinds
+// we also need a more formal mapping for cache and db types
+func spanKindToDatadogType(kind string) string {
+	switch kind {
+	case "CLIENT":
+		return httpKind
+	case "SERVER":
+		return webKind
+	default:
+		return customKind
+	}
+}
+
+func getSpanErrorAndSetTags(s map[string]interface{}, tags map[string]string) int32 {
+	var isError int32
+	// Set Span Status and any response or error details
+	status := s["status"].(map[string]interface{})
+	code := int32(status["code"].(float64))
+
+	switch code {
+	case otelOkCode:
+		isError = okCode
+	case otelErrorCode:
+		isError = errorCode
+	default:
+		isError = okCode
+	}
+
+	if isError == errorCode {
+		extractErrorTagsFromEvents(s, tags)
+		// If we weren't able to pull an error type or message, go ahead and set
+		// these to the old defaults
+		if _, ok := tags[tagErrorType]; !ok {
+			tags[tagErrorType] = "ERR_CODE_" + strconv.FormatInt(int64(code), 10)
+		}
+
+		if _, ok := tags[tagErrorMsg]; !ok {
+			if msg, ok := status["message"]; ok {
+				msgString := msg.(string)
+				tags[tagErrorMsg] = msgString
+			} else {
+				tags[tagErrorMsg] = "ERR_CODE_" +  strconv.FormatInt(int64(code), 10)
+			}
+		}
+	}
+
+	// if status code exists check if error depending on type
+	if tags[attributeHTTPStatusCode] != "" {
+		httpStatusCode, err := strconv.ParseInt(tags[attributeHTTPStatusCode], 10, 64)
+		if err == nil {
+			// for 500 type, always mark as error
+			if httpStatusCode >= 500 {
+				isError = errorCode
+				// for 400 type, mark as error if it is an http client
+			} else if NormalizeSpanKind(int32(s["kind"].(float64))) == "CLIENT" && httpStatusCode >= 400 {
+				isError = errorCode
+			}
+		}
+	}
+
+	return isError
+}
+
+// Finds the last exception event in the span, and surfaces it to DataDog. DataDog spans only support a single
+// exception per span, but otel supports many exceptions as "Events" on a given span. The last exception was
+// chosen for now as most otel-instrumented libraries (http, pg, etc.) only capture a single exception (if any)
+// per span. If multiple exceptions are logged, it's my assumption that the last exception is most likely the
+// exception that escaped the scope of the span.
+//
+// TODO:
+//  Seems that the spec has an attribute that hasn't made it to the collector yet -- "exception.escaped".
+//  This seems optional (SHOULD vs. MUST be set), but it's likely that we want to bubble up the exception
+//  that escaped the scope of the span ("exception.escaped" == true) instead of the last exception event
+//  in the case that these events differ.
+//
+//  https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/trace/semantic_conventions/exceptions.md#attributes
+func extractErrorTagsFromEvents(s map[string]interface{}, tags map[string]string) {
+	evts := s["events"].([]map[string]interface{})
+	for i := len(evts) - 1; i >= 0; i-- {
+		evt := evts[i]
+
+		evtNameFormatted := evt["name"].(string)
+		if evtNameFormatted == attributeExceptionEventName {
+			attribs := evt["attributes"].(map[string]string)
+			if errType, ok := attribs[attributeExceptionType]; ok {
+				tags[tagErrorType] = errType
+			}
+			if errMsg, ok := attribs[attributeExceptionMessage]; ok {
+				tags[tagErrorMsg] = errMsg
+			}
+			if errStack, ok := attribs[attributeExceptionStacktrace]; ok {
+				tags[tagErrorStack] = errStack
+			}
+			return
+		}		
+	}
+}
+
+// Convert Span Events to a string so that they can be appended to the span as a tag.
+// Span events are probably better served as Structured Logs sent to the logs API
+// with the trace id and span id added for log/trace correlation. However this would
+// mean a separate API intake endpoint and also Logs and Traces may not be enabled for
+// a user, so for now just surfacing this information as a string is better than not
+// including it at all. The tradeoff is that this increases the size of the span and the
+// span may have a tag that exceeds max size allowed in backend/ui/etc.
+//
+// TODO: Expose configuration option for collecting Span Events as Logs within Datadog
+// and add forwarding to Logs API intake.
+// func eventsToString(evts pdata.SpanEventSlice) string {
+// 	eventArray := make([]map[string]interface{}, 0, evts.Len())
+// 	for i := 0; i < evts.Len(); i++ {
+// 		spanEvent := evts.At(i)
+// 		event := map[string]interface{}{}
+// 		event[eventNameTag] = spanEvent.Name()
+// 		event[eventTimeTag] = spanEvent.Timestamp()
+// 		event[eventAttrTag] = tracetranslator.AttributeMapToMap(spanEvent.Attributes())
+// 		eventArray = append(eventArray, event)
+// 	}
+// 	eventArrayBytes, _ := json.Marshal(&eventArray)
+// 	return string(eventArrayBytes)
+// }
